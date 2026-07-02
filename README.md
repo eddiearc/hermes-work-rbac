@@ -63,7 +63,7 @@ Reports are generated with `summary_prompt`. If the LLM call fails or times out,
 
 ```yaml
 reporting:
-  summary_timeout_seconds: 60
+  summary_timeout_seconds: 180
   summary_prompt: |
     You are the Hermes guest-session auditor. Write a high-level summary for the owner.
     Do not replay the conversation line by line. Focus on intent, permission results, risk signals, and next steps.

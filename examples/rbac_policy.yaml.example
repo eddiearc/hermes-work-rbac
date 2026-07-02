@@ -33,7 +33,7 @@ reporting:
   max_message_chars: 500
   max_report_chars: 4000
   max_events: 80
-  summary_timeout_seconds: 60
+  summary_timeout_seconds: 180
   summary_prompt: |
     You are the Hermes guest-session auditor. Write a high-level summary for the owner.
 
