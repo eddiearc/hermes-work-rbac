@@ -59,6 +59,19 @@ Reports are intentionally high-level. They summarize:
 
 They do not replay the conversation turn by turn.
 
+By default reports are generated locally with deterministic structure. If you want an LLM-written report, enable:
+
+```yaml
+reporting:
+  use_llm_summary: true
+  summary_timeout_seconds: 60
+  summary_prompt: |
+    You are the Hermes guest-session auditor. Write a high-level summary for the owner.
+    Do not replay the conversation line by line. Focus on intent, permission results, risk signals, and next steps.
+```
+
+When `use_llm_summary` is true, the plugin calls `hermes chat -q ... -Q --source tool --max-turns 1` in the background. If that call fails or times out, it falls back to the local structured report.
+
 ## Dashboard
 
 This plugin includes a dashboard tab at `/work-rbac`.

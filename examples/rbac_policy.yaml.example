@@ -31,7 +31,20 @@ reporting:
   send_to:
     - feishu:oc_owner_dm_or_channel_id
   max_message_chars: 500
+  max_report_chars: 4000
   max_events: 80
+  use_llm_summary: false
+  summary_timeout_seconds: 60
+  summary_prompt: |
+    You are the Hermes guest-session auditor. Write a high-level summary for the owner.
+
+    Requirements:
+    - Do not replay the conversation line by line.
+    - Summarize what the visitor was trying to do.
+    - Summarize which permissions were allowed or denied.
+    - Call out risk signals such as private-directory reads, writes, terminal use, desktop control, or permission bypass attempts.
+    - Recommend what the owner should do next.
+    - Keep it short and clear.
   redact_secrets: true
   reports_log: ~/.hermes/work_rbac_reports.jsonl
   events_log: ~/.hermes/work_rbac_conversations.jsonl

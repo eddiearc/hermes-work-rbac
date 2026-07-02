@@ -1,5 +1,5 @@
 name: work-rbac
-version: "1.0.1"
+version: "1.0.2"
 description: Owner/guest RBAC for Hermes file and execution tools.
 provides_hooks:
   - pre_tool_call

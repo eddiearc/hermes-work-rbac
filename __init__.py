@@ -21,6 +21,16 @@ AUDIT_PATH = Path(os.environ.get("HERMES_RBAC_AUDIT_LOG", "~/.hermes/rbac_audit.
 DEFAULT_REPORTS_PATH = Path("~/.hermes/work_rbac_reports.jsonl").expanduser()
 DEFAULT_EVENTS_PATH = Path("~/.hermes/work_rbac_conversations.jsonl").expanduser()
 DEFAULT_HERMES_BIN = shutil.which("hermes") or "hermes"
+DEFAULT_SUMMARY_PROMPT = """你是 Hermes 的访客会话审计员。请根据访客会话事件写一份给 owner 看的高层摘要。
+
+要求：
+- 不要逐句复述原文，不要贴聊天记录。
+- 总结访客大概想做什么。
+- 总结哪些权限被允许或拒绝。
+- 判断有没有越权、读私有目录、写文件、终端、本机操作、绕过权限等风险信号。
+- 给出 owner 下一步应该做什么。
+- 输出中文，短而清晰。
+"""
 
 _REPORT_LOCK = threading.RLock()
 _REPORT_SESSIONS: dict[str, dict[str, Any]] = {}
@@ -334,6 +344,20 @@ def _max_events(reporting: dict[str, Any]) -> int:
         return 80
 
 
+def _max_report_chars(reporting: dict[str, Any]) -> int:
+    try:
+        return max(500, int(reporting.get("max_report_chars", 4000)))
+    except Exception:
+        return 4000
+
+
+def _summary_timeout(reporting: dict[str, Any]) -> int:
+    try:
+        return max(10, int(reporting.get("summary_timeout_seconds", 60)))
+    except Exception:
+        return 60
+
+
 def _events_path(reporting: dict[str, Any]) -> Path:
     return Path(str(reporting.get("events_log") or DEFAULT_EVENTS_PATH)).expanduser()
 
@@ -520,6 +544,14 @@ def _report_targets(reporting: dict[str, Any]) -> list[str]:
 
 
 def _build_report(session: dict[str, Any], reporting: dict[str, Any]) -> str:
+    if reporting.get("use_llm_summary"):
+        llm_report = _build_llm_report(session, reporting)
+        if llm_report:
+            return llm_report
+    return _build_structured_report(session, reporting)
+
+
+def _build_structured_report(session: dict[str, Any], reporting: dict[str, Any]) -> str:
     who = session.get("user_name") or session.get("user_id") or "unknown"
     platform = session.get("platform") or "unknown"
     chat_id = session.get("chat_id") or "unknown"
@@ -566,6 +598,80 @@ def _build_report(session: dict[str, Any], reporting: dict[str, Any]) -> str:
     lines.extend(f"- {step}" for step in next_steps)
 
     return "\n".join(lines)
+
+
+def _build_llm_report(session: dict[str, Any], reporting: dict[str, Any]) -> str:
+    prompt = str(reporting.get("summary_prompt") or DEFAULT_SUMMARY_PROMPT).strip()
+    if not prompt:
+        prompt = DEFAULT_SUMMARY_PROMPT
+    hermes_bin = os.environ.get("HERMES_BIN", DEFAULT_HERMES_BIN)
+    timeout = _summary_timeout(reporting)
+    payload = _summary_payload(session, reporting)
+    full_prompt = (
+        f"{prompt}\n\n"
+        "下面是结构化事件数据。请只输出总结报告，不要输出 JSON，不要逐字引用访客原文。\n\n"
+        f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
+    )
+    try:
+        result = subprocess.run(
+            [
+                hermes_bin,
+                "chat",
+                "-q",
+                full_prompt,
+                "-Q",
+                "--ignore-rules",
+                "--source",
+                "tool",
+                "--max-turns",
+                "1",
+            ],
+            check=False,
+            timeout=timeout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except Exception:
+        logger.debug("work-rbac LLM summary failed", exc_info=True)
+        return ""
+    if result.returncode != 0:
+        logger.debug("work-rbac LLM summary exited with %s", result.returncode)
+        return ""
+    text = (result.stdout or "").strip()
+    return text[: _max_report_chars(reporting)].strip()
+
+
+def _summary_payload(session: dict[str, Any], reporting: dict[str, Any]) -> dict[str, Any]:
+    max_events = _max_events(reporting)
+    events = session.get("events", [])[-max_events:]
+    tools = (session.get("tools") or [])[-max_events:]
+    return {
+        "session": {
+            "user_name": session.get("user_name") or "",
+            "platform": session.get("platform") or "",
+            "chat_id": session.get("chat_id") or "",
+            "role": session.get("role") or "",
+            "started_at": _local_time(float(session.get("started_at") or _now())),
+            "last_seen": _local_time(float(session.get("last_seen") or _now())),
+        },
+        "messages": [
+            {
+                "kind": event.get("kind"),
+                "text": str(event.get("text") or ""),
+            }
+            for event in events
+        ],
+        "tools": [
+            {
+                "operation": event.get("operation"),
+                "allowed": bool(event.get("allowed")),
+                "target": str(event.get("target") or ""),
+                "reason": str(event.get("reason") or ""),
+            }
+            for event in tools
+        ],
+    }
 
 
 def _infer_intents(user_events: list[dict[str, Any]]) -> list[str]:
