@@ -46,6 +46,19 @@ Example request:
 帮我修改 Hermes 的 Work RBAC 插件配置，把张三设为 owner；李四这类访客只能读 /path/to/shared；访客只能使用 read_file 和 search_files；访客会话总结发到我的 Feishu DM。
 ```
 
+## Guest Reports
+
+When `reporting.enabled` is true, the plugin summarizes guest direct-message sessions after they have been idle for `idle_minutes`.
+
+Reports are intentionally high-level. They summarize:
+
+- visitor intent
+- allowed and denied tool counts
+- risk signals
+- suggested next steps
+
+They do not replay the conversation turn by turn.
+
 ## Dashboard
 
 This plugin includes a dashboard tab at `/work-rbac`.

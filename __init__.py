@@ -525,6 +525,16 @@ def _build_report(session: dict[str, Any], reporting: dict[str, Any]) -> str:
     chat_id = session.get("chat_id") or "unknown"
     started = _local_time(float(session.get("started_at") or _now()))
     ended = _local_time(float(session.get("last_seen") or _now()))
+    events = session.get("events", [])[-_max_events(reporting):]
+    tools = session.get("tools") or []
+    user_events = [event for event in events if event.get("kind") == "user"]
+    assistant_events = [event for event in events if event.get("kind") == "assistant"]
+    denied_tools = [event for event in tools if not event.get("allowed")]
+    allowed_tools = [event for event in tools if event.get("allowed")]
+    intents = _infer_intents(user_events)
+    risk_signals = _risk_signals(user_events, denied_tools)
+    next_steps = _recommended_next_steps(session, denied_tools, allowed_tools, risk_signals)
+
     lines = [
         "Hermes 访客会话总结",
         f"对象：{who}",
@@ -532,24 +542,109 @@ def _build_report(session: dict[str, Any], reporting: dict[str, Any]) -> str:
         f"会话：{chat_id}",
         f"时间：{started} - {ended}",
         "",
-        "对话：",
+        "概览：",
+        f"- 访客消息 {len(user_events)} 条，Hermes 回复 {len(assistant_events)} 条。",
+        f"- 主要意图：{'; '.join(intents) if intents else '普通咨询或闲聊，没有明显操作诉求。'}",
     ]
-    for event in session.get("events", [])[-_max_events(reporting):]:
-        speaker = "访客" if event.get("kind") == "user" else "Hermes"
-        text = str(event.get("text") or "").replace("\n", " ").strip()
-        lines.append(f"- {speaker}：{text}")
 
-    tools = session.get("tools") or []
     if tools:
-        lines.extend(["", "工具 / 权限："])
-        for event in tools[-20:]:
-            status = "允许" if event.get("allowed") else "拒绝"
-            target = str(event.get("target") or "").strip()
-            suffix = f" -> {target}" if target else ""
-            reason = f"；{event.get('reason')}" if event.get("reason") else ""
-            lines.append(f"- {status} {event.get('operation')}{suffix}{reason}")
+        lines.extend([
+            "",
+            "权限结果：",
+            f"- 工具调用 {len(tools)} 次：允许 {len(allowed_tools)} 次，拒绝 {len(denied_tools)} 次。",
+        ])
+        for item in _summarize_tool_events(tools):
+            lines.append(f"- {item}")
+
+    lines.extend(["", "风险信号："])
+    if risk_signals:
+        lines.extend(f"- {signal}" for signal in risk_signals)
+    else:
+        lines.append("- 暂无明显越权或高风险操作诉求。")
+
+    lines.extend(["", "建议下一步："])
+    lines.extend(f"- {step}" for step in next_steps)
 
     return "\n".join(lines)
+
+
+def _infer_intents(user_events: list[dict[str, Any]]) -> list[str]:
+    text = " ".join(str(event.get("text") or "") for event in user_events).lower()
+    intents: list[str] = []
+    patterns = [
+        ("询问 Hermes 能力或身份", ["who are you", "你是谁", "你能干啥", "能做什么"]),
+        ("测试本地文件读取边界", ["读", "读取", "目录", "文件", "~/", "/users/", "read"]),
+        ("测试写入或修改权限", ["写", "写入", "修改", "patch", "保存", "hello world"]),
+        ("尝试使用终端或本机执行能力", ["terminal", "终端", "命令", "codex", "进程", "运行"]),
+        ("尝试操作浏览器或电脑界面", ["关闭", "网页", "浏览器", "chrome", "电脑", "屏幕"]),
+        ("要求提权或绕过权限", ["开权限", "绕过", "自己想办法", "提权", "不受限"]),
+    ]
+    for label, needles in patterns:
+        if any(needle in text for needle in needles):
+            intents.append(label)
+    return intents[:4]
+
+
+def _risk_signals(user_events: list[dict[str, Any]], denied_tools: list[dict[str, Any]]) -> list[str]:
+    text = " ".join(str(event.get("text") or "") for event in user_events).lower()
+    signals: list[str] = []
+    if denied_tools:
+        signals.append("触发过 RBAC 拒绝，说明访客请求超出了当前角色授权。")
+    if any(word in text for word in ["~/", "/users/", ".ssh", "private", "隐私"]):
+        signals.append("出现读取私有目录或用户主目录的倾向。")
+    if any(word in text for word in ["写", "写入", "patch", "修改", "保存"]):
+        signals.append("出现写入或修改本机文件的诉求。")
+    if any(word in text for word in ["terminal", "终端", "命令", "codex", "进程"]):
+        signals.append("出现使用终端、进程或代码执行能力的诉求。")
+    if any(word in text for word in ["关闭", "网页", "浏览器", "电脑", "屏幕"]):
+        signals.append("出现操作本机界面或浏览器的诉求。")
+    if any(word in text for word in ["绕过", "开权限", "提权", "自己想办法"]):
+        signals.append("出现要求绕过或提升权限的表述。")
+    return _dedupe(signals)
+
+
+def _summarize_tool_events(tools: list[dict[str, Any]]) -> list[str]:
+    counts: dict[tuple[str, bool], int] = {}
+    for event in tools:
+        operation = str(event.get("operation") or "unknown")
+        allowed = bool(event.get("allowed"))
+        counts[(operation, allowed)] = counts.get((operation, allowed), 0) + 1
+    items = []
+    for (operation, allowed), count in sorted(counts.items()):
+        status = "允许" if allowed else "拒绝"
+        items.append(f"{status} {operation}：{count} 次")
+    return items
+
+
+def _recommended_next_steps(
+    session: dict[str, Any],
+    denied_tools: list[dict[str, Any]],
+    allowed_tools: list[dict[str, Any]],
+    risk_signals: list[str],
+) -> list[str]:
+    steps: list[str] = []
+    if denied_tools:
+        steps.append("保持当前 guest 权限；除非你明确认识该访客并需要协作，否则不要增加 terminal、computer_use、browser 或写入类工具。")
+    if allowed_tools:
+        steps.append("如果这些读取行为符合预期，可以继续保留当前 read_roots；如果不符合，收窄 guest 的 read_roots。")
+    if any("写入" in signal or "修改" in signal for signal in risk_signals):
+        steps.append("如确需让访客产出文件，建议只开放一个临时共享写入目录，并只给 write_file/patch 最小权限。")
+    if any("终端" in signal or "本机界面" in signal or "绕过" in signal for signal in risk_signals):
+        steps.append("把这次会话当作权限边界测试记录，不建议对该访客开放本机执行或界面控制能力。")
+    if not steps:
+        steps.append("无需立即处理；继续观察该访客后续是否提出读取、写入或执行类请求。")
+    return steps[:4]
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
 
 
 def _local_time(ts: float) -> str:
