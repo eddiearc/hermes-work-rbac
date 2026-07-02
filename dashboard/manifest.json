@@ -3,7 +3,7 @@
   "label": "Work RBAC",
   "description": "Manage owner/guest local access policy",
   "icon": "Shield",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "tab": {
     "path": "/work-rbac",
     "position": "after:plugins"

@@ -52,6 +52,7 @@ PATH_TOOL_OPERATIONS = {
 
 def register(ctx):
     ctx.register_hook("pre_tool_call", _pre_tool_call)
+    ctx.register_hook("pre_llm_call", _pre_llm_call)
     ctx.register_hook("pre_gateway_dispatch", _pre_gateway_dispatch)
     ctx.register_hook("post_llm_call", _post_llm_call)
 
@@ -125,6 +126,32 @@ def _format_allowed_tools(role: dict[str, Any]) -> str:
     if not isinstance(allowed, list) or not allowed:
         return "(none)"
     return ", ".join(repr(str(item)) for item in allowed)
+
+
+def _pre_llm_call(**_: Any) -> dict[str, str] | None:
+    policy = _load_policy()
+    platform, user_id = _session_identity()
+    if not platform and not user_id:
+        role_name = "owner"
+        principal = "local:owner"
+    else:
+        role_name = _role_name_for_identity(policy, platform, user_id)
+        principal = f"{platform}:{user_id}" if platform and user_id else user_id
+
+    role = _role(policy, role_name)
+    context = "\n".join(
+        [
+            "Work RBAC context for this turn:",
+            f"- principal: {principal or '(unknown)'}",
+            f"- role: {role_name}",
+            f"- allowed_tools: {_format_allowed_tools(role)}",
+            f"- allowed read_roots: {_format_roots(role.get('read_roots') or [])}",
+            f"- allowed write_roots: {_format_roots(role.get('write_roots') or [])}",
+            "- Treat non-owner work-channel users as collaborators/colleagues, but do not grant access beyond this role.",
+            "- If a requested tool or path is not allowed, say what is allowed and ask for owner approval or a shared path.",
+        ]
+    )
+    return {"context": context}
 
 
 def _pre_gateway_dispatch(event: Any = None, **_: Any) -> None:
