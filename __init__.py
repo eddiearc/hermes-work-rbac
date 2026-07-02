@@ -544,10 +544,9 @@ def _report_targets(reporting: dict[str, Any]) -> list[str]:
 
 
 def _build_report(session: dict[str, Any], reporting: dict[str, Any]) -> str:
-    if reporting.get("use_llm_summary"):
-        llm_report = _build_llm_report(session, reporting)
-        if llm_report:
-            return llm_report
+    llm_report = _build_llm_report(session, reporting)
+    if llm_report:
+        return llm_report
     return _build_structured_report(session, reporting)
 
 
