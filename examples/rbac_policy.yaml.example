@@ -1,0 +1,37 @@
+default_role: guest
+
+roles:
+  owner:
+    allowed_tools:
+      - "*"
+    read_roots:
+      - /
+    write_roots:
+      - /
+
+  guest:
+    allowed_tools:
+      - read_file
+      - search_files
+    read_roots:
+      - /path/to/shared
+    write_roots: []
+
+users:
+  feishu:ou_owner_user_id:
+    role: owner
+
+reporting:
+  enabled: true
+  report_roles:
+    - guest
+  dm_only: true
+  idle_minutes: 5
+  scan_interval_seconds: 30
+  send_to:
+    - feishu:oc_owner_dm_or_channel_id
+  max_message_chars: 500
+  max_events: 80
+  redact_secrets: true
+  reports_log: ~/.hermes/work_rbac_reports.jsonl
+  events_log: ~/.hermes/work_rbac_conversations.jsonl

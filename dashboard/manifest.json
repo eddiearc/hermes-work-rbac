@@ -1,0 +1,13 @@
+{
+  "name": "work-rbac",
+  "label": "Work RBAC",
+  "description": "Manage owner/guest local access policy",
+  "icon": "Shield",
+  "version": "1.0.0",
+  "tab": {
+    "path": "/work-rbac",
+    "position": "after:plugins"
+  },
+  "entry": "index.js",
+  "api": "api.py"
+}
