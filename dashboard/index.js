@@ -204,6 +204,23 @@
         ),
         h("p", {style: {margin: "0 0 8px"}},
           "例如直接说：帮我修改 Hermes 的 Work RBAC 插件配置，把张三设为 owner；李四这类访客只能读 /path/to/shared；访客只能使用 read_file 和 search_files；访客会话总结发到我的 Feishu DM。"
+        ),
+        h("div", {
+          style: {
+            marginTop: "14px",
+            padding: "12px 14px",
+            border: "1px solid rgba(255,255,255,0.18)",
+            borderRadius: "8px",
+            background: "rgba(0,0,0,0.18)",
+          },
+        },
+          h("div", {style: {fontWeight: 700, color: "#fff", marginBottom: "6px"}}, "访客总结配置"),
+          h("p", {style: {margin: "0 0 6px"}},
+            "在 YAML 的 reporting 下面可以直接配置 use_llm_summary、summary_prompt、summary_timeout_seconds 和 max_report_chars。"
+          ),
+          h("p", {style: {margin: 0}},
+            "use_llm_summary 为 false 时使用本地结构化总结；改成 true 后会按 summary_prompt 调用 Hermes 生成总结，失败时自动回退。"
+          )
         )
       )
     );
