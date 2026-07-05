@@ -59,17 +59,19 @@ Reports are intentionally high-level. They summarize:
 
 They do not replay the conversation turn by turn.
 
-Reports are generated with `summary_prompt`. If the LLM call fails or times out, the plugin falls back to a local structured report.
+Reports are generated with `summary_prompt`. If the LLM call fails, times out, or still returns an iteration-budget warning, the plugin falls back to a local structured report.
 
 ```yaml
 reporting:
   summary_timeout_seconds: 180
+  llm_summary_enabled: true
+  summary_max_turns: 30
   summary_prompt: |
     You are the Hermes guest-session auditor. Write a high-level summary for the owner.
     Do not replay the conversation line by line. Focus on intent, permission results, risk signals, and next steps.
 ```
 
-The plugin calls `hermes chat -q ... -Q --source tool --max-turns 1` in the background for the summary.
+The plugin calls `hermes chat -q ... -Q --source tool --max-turns <summary_max_turns>` in the background for the summary. The default `summary_max_turns` is 30 so the summarizer has enough room to load relevant skills and still produce a final report.
 
 ## Dashboard
 

@@ -216,7 +216,7 @@
         },
           h("div", {style: {fontWeight: 700, color: "#fff", marginBottom: "6px"}}, "访客总结配置"),
           h("p", {style: {margin: "0 0 6px"}},
-            "在 YAML 的 reporting 下面可以直接配置 summary_prompt、summary_timeout_seconds 和 max_report_chars。"
+            "在 YAML 的 reporting 下面可以直接配置 summary_prompt、summary_timeout_seconds、summary_max_turns、llm_summary_enabled 和 max_report_chars。"
           ),
           h("p", {style: {margin: 0}},
             "访客会话空闲后会按 summary_prompt 调用 Hermes 生成总结；如果生成失败或超时，会自动回退到本地结构化总结。"

@@ -380,9 +380,16 @@ def _max_report_chars(reporting: dict[str, Any]) -> int:
 
 def _summary_timeout(reporting: dict[str, Any]) -> int:
     try:
-        return max(10, int(reporting.get("summary_timeout_seconds", 60)))
+        return max(10, int(reporting.get("summary_timeout_seconds", 180)))
     except Exception:
-        return 60
+        return 180
+
+
+def _summary_max_turns(reporting: dict[str, Any]) -> int:
+    try:
+        return max(1, int(reporting.get("summary_max_turns", 30)))
+    except Exception:
+        return 30
 
 
 def _events_path(reporting: dict[str, Any]) -> Path:
@@ -571,10 +578,19 @@ def _report_targets(reporting: dict[str, Any]) -> list[str]:
 
 
 def _build_report(session: dict[str, Any], reporting: dict[str, Any]) -> str:
+    if not _llm_summary_enabled(reporting):
+        return _build_structured_report(session, reporting)
     llm_report = _build_llm_report(session, reporting)
     if llm_report:
         return llm_report
     return _build_structured_report(session, reporting)
+
+
+def _llm_summary_enabled(reporting: dict[str, Any]) -> bool:
+    raw = reporting.get("llm_summary_enabled", True)
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() not in {"0", "false", "no", "off"}
 
 
 def _build_structured_report(session: dict[str, Any], reporting: dict[str, Any]) -> str:
@@ -632,6 +648,7 @@ def _build_llm_report(session: dict[str, Any], reporting: dict[str, Any]) -> str
         prompt = DEFAULT_SUMMARY_PROMPT
     hermes_bin = os.environ.get("HERMES_BIN", DEFAULT_HERMES_BIN)
     timeout = _summary_timeout(reporting)
+    max_turns = _summary_max_turns(reporting)
     payload = _summary_payload(session, reporting)
     full_prompt = (
         f"{prompt}\n\n"
@@ -650,7 +667,7 @@ def _build_llm_report(session: dict[str, Any], reporting: dict[str, Any]) -> str
                 "--source",
                 "tool",
                 "--max-turns",
-                "1",
+                str(max_turns),
             ],
             check=False,
             timeout=timeout,
@@ -665,6 +682,9 @@ def _build_llm_report(session: dict[str, Any], reporting: dict[str, Any]) -> str
         logger.debug("work-rbac LLM summary exited with %s", result.returncode)
         return ""
     text = (result.stdout or "").strip()
+    if "Reached maximum iterations" in text or "Requesting summary" in text:
+        logger.debug("work-rbac LLM summary hit iteration budget; using structured fallback")
+        return ""
     return text[: _max_report_chars(reporting)].strip()
 
 

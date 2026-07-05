@@ -34,6 +34,8 @@ reporting:
   max_report_chars: 4000
   max_events: 80
   summary_timeout_seconds: 180
+  llm_summary_enabled: true
+  summary_max_turns: 30
   summary_prompt: |
     You are the Hermes guest-session auditor. Write a high-level summary for the owner.
 
