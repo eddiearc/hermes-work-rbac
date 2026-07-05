@@ -650,6 +650,20 @@ def _build_llm_report(session: dict[str, Any], reporting: dict[str, Any]) -> str
     timeout = _summary_timeout(reporting)
     max_turns = _summary_max_turns(reporting)
     payload = _summary_payload(session, reporting)
+    summary_env = os.environ.copy()
+    # Preserve the audited visitor identity for the summary subprocess. Without
+    # this, plugin hooks in the child process see no gateway identity and inject
+    # a misleading local owner RBAC context while summarizing a guest session.
+    for env_key, session_key in [
+        ("HERMES_SESSION_PLATFORM", "platform"),
+        ("HERMES_SESSION_CHAT_ID", "chat_id"),
+        ("HERMES_SESSION_USER_ID", "user_id"),
+        ("HERMES_SESSION_USER_NAME", "user_name"),
+        ("HERMES_SESSION_KEY", "session_key"),
+    ]:
+        value = str(session.get(session_key) or "").strip()
+        if value:
+            summary_env[env_key] = value
     full_prompt = (
         f"{prompt}\n\n"
         "下面是结构化事件数据。请只输出总结报告，不要输出 JSON，不要逐字引用访客原文。\n\n"
@@ -674,6 +688,7 @@ def _build_llm_report(session: dict[str, Any], reporting: dict[str, Any]) -> str
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,
+            env=summary_env,
         )
     except Exception:
         logger.debug("work-rbac LLM summary failed", exc_info=True)
