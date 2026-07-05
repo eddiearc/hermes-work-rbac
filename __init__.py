@@ -139,6 +139,17 @@ def _pre_llm_call(**_: Any) -> dict[str, str] | None:
         principal = f"{platform}:{user_id}" if platform and user_id else user_id
 
     role = _role(policy, role_name)
+    if _is_owner_role(role_name, role):
+        context = "\n".join(
+            [
+                "Work RBAC context for this turn:",
+                f"- principal: {principal or '(unknown)'}",
+                "- role: owner",
+                "- access: owner/full access per Work RBAC policy.",
+            ]
+        )
+        return {"context": context}
+
     context = "\n".join(
         [
             "Work RBAC context for this turn:",
@@ -152,6 +163,10 @@ def _pre_llm_call(**_: Any) -> dict[str, str] | None:
         ]
     )
     return {"context": context}
+
+
+def _is_owner_role(role_name: str, role: dict[str, Any]) -> bool:
+    return role_name == "owner" and "*" in {str(item) for item in (role.get("allowed_tools") or [])}
 
 
 def _pre_gateway_dispatch(event: Any = None, **_: Any) -> None:
